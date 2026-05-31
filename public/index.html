@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大气污染扩散模拟系统 - 工程化版本</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <h1>🏭 大气污染扩散模拟系统</h1>
+            <p class="subtitle">工程化版本 | Web Worker异步计算 | WebSocket预警推送 | 热力图实时渲染</p>
+        </header>
+
+        <div class="main-content">
+            <aside class="control-panel">
+                <div class="control-section">
+                    <h3>🌬️ 气象参数</h3>
+                    <div class="control-group">
+                        <label>风速: <span id="windSpeedValue">5.0</span> m/s</label>
+                        <input type="range" id="windSpeed" min="0" max="20" step="0.5" value="5">
+                    </div>
+                    <div class="control-group">
+                        <label>风向: <span id="windDirectionValue">90</span>°</label>
+                        <input type="range" id="windDirection" min="0" max="360" step="5" value="90">
+                        <div class="wind-compass">
+                            <div class="compass-arrow" id="compassArrow"></div>
+                            <span class="compass-label">N</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>温度: <span id="temperatureValue">25</span>°C</label>
+                        <input type="range" id="temperature" min="-20" max="45" step="1" value="25">
+                    </div>
+                    <div class="control-group">
+                        <label>湿度: <span id="humidityValue">60</span>%</label>
+                        <input type="range" id="humidity" min="0" max="100" step="1" value="60">
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>🏭 污染源控制</h3>
+                    <div class="control-group">
+                        <label>排放强度: <span id="emissionValue">50</span> g/s</label>
+                        <input type="range" id="emissionIntensity" min="0" max="200" step="1" value="50">
+                    </div>
+                    <div class="control-group">
+                        <label>污染源高度: <span id="stackHeightValue">80</span> m</label>
+                        <input type="range" id="stackHeight" min="10" max="300" step="10" value="80">
+                    </div>
+                    <div class="control-group">
+                        <label>大气稳定度:</label>
+                        <select id="stabilityClass">
+                            <option value="A">极不稳定 (A)</option>
+                            <option value="B">不稳定 (B)</option>
+                            <option value="C">弱不稳定 (C)</option>
+                            <option value="D" selected>中性 (D)</option>
+                            <option value="E">弱稳定 (E)</option>
+                            <option value="F">稳定 (F)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>⚗️ 化学反应</h3>
+                    <div class="control-group">
+                        <label>SO₂→SO₄²⁻ 速率: <span id="reactionRateValue">0.01</span> 1/s</label>
+                        <input type="range" id="reactionRate" min="0" max="0.1" step="0.001" value="0.01">
+                    </div>
+                    <div class="control-group">
+                        <label>
+                            <input type="checkbox" id="enableReaction" checked>
+                            启用化学转化
+                        </label>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>🎬 模拟控制</h3>
+                    <div class="button-group">
+                        <button id="startBtn" class="btn btn-primary">▶ 开始</button>
+                        <button id="pauseBtn" class="btn btn-warning">⏸ 暂停</button>
+                        <button id="resetBtn" class="btn btn-danger">↺ 重置</button>
+                    </div>
+                    <div class="button-group">
+                        <button id="saveBtn" class="btn btn-success">💾 保存快照</button>
+                        <button id="loadBtn" class="btn btn-info">📂 查看历史</button>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>📊 组分浓度</h3>
+                    <div class="data-display">
+                        <div class="data-item">
+                            <span class="data-label" style="color:#78909c">SO₂:</span>
+                            <span class="data-value" id="so2Value">0.00</span>
+                            <span class="data-unit">ppm</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label" style="color:#a1887f">SO₄²⁻:</span>
+                            <span class="data-value" id="so4Value">0.00</span>
+                            <span class="data-unit">ppm</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label" style="color:#ef5350">NO₂:</span>
+                            <span class="data-value" id="no2Value">0.00</span>
+                            <span class="data-unit">ppm</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label" style="color:#8d6e63">PM2.5:</span>
+                            <span class="data-value" id="pm25Value">0.00</span>
+                            <span class="data-unit">ppm</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">最大浓度:</span>
+                            <span class="data-value" id="maxValue">0.00</span>
+                            <span class="data-unit">ppm</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">运行时间:</span>
+                            <span class="data-value" id="runTime">0</span>
+                            <span class="data-unit">s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <h3>💧 吸湿状态</h3>
+                    <div class="data-display">
+                        <div class="data-item">
+                            <span class="data-label">SO₂ 因子:</span>
+                            <span class="data-value" id="growthSo2">1.00</span>
+                            <span class="data-unit">x</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">SO₄²⁻ 因子:</span>
+                            <span class="data-value" id="growthSo4">1.00</span>
+                            <span class="data-unit">x</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">PM2.5 因子:</span>
+                            <span class="data-value" id="growthPm25">1.00</span>
+                            <span class="data-unit">x</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <main class="simulation-area">
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('canvas')">🎨 模拟画布</button>
+                    <button class="tab-btn" onclick="switchTab('map')">🗺️ 地图热力图</button>
+                </div>
+
+                <div id="canvasTab" class="tab-content active">
+                    <div class="canvas-container">
+                        <canvas id="simulationCanvas" width="800" height="600"></canvas>
+                        <div class="canvas-overlay" id="canvasOverlay">
+                            <span>点击开始按钮启动模拟</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="mapTab" class="tab-content">
+                    <div id="mapContainer" style="width: 100%; height: 600px; border-radius: 8px;"></div>
+                </div>
+
+                <div class="legend-panel">
+                    <h4 id="legendTitle">浓度图例 - SO₂</h4>
+                    <div class="legend-bar">
+                        <div class="legend-gradient"></div>
+                        <div class="legend-labels">
+                            <span>0</span>
+                            <span>安全</span>
+                            <span>轻度</span>
+                            <span>中度</span>
+                            <span>重度</span>
+                        </div>
+                    </div>
+                    <div class="legend-items">
+                        <div class="legend-item"><span class="legend-dot" style="background:#4CAF50"></span>安全</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#FFC107"></span>轻度</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#FF9800"></span>中度</div>
+                        <div class="legend-item"><span class="legend-dot" style="background:#F44336"></span>重度</div>
+                    </div>
+                    <div class="species-hint">
+                        <p>💡 点击左侧组分选择器切换显示</p>
+                    </div>
+                </div>
+
+                <div class="alert-panel">
+                    <h4>⚠️ 实时预警</h4>
+                    <div id="alertContainer" class="alert-container">
+                        <div class="no-alerts">暂无预警信息</div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <div id="historyModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>📂 历史快照 - 多组分数据</h3>
+                    <button class="close-btn" id="closeModal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>时间</th>
+                                <th>风速</th>
+                                <th>风向</th>
+                                <th>排放</th>
+                                <th>SO₂</th>
+                                <th>SO₄²⁻</th>
+                                <th>PM2.5</th>
+                                <th>稳定度</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            <tr><td colspan="10" class="no-data">加载中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="notification" class="notification"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
